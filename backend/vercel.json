@@ -1,0 +1,39 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "api/transcript.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/transcript-simple.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "api/transcript-captions.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "index.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/transcript",
+      "dest": "/api/transcript.js"
+    },
+    {
+      "src": "/api/transcript-simple",
+      "dest": "/api/transcript-simple.js"
+    },
+    {
+      "src": "/api/transcript-captions",
+      "dest": "/api/transcript-captions.js"
+    },
+    {
+      "src": "/transcript",
+      "dest": "/index.js"
+    }
+  ]
+}
