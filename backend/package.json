@@ -14,7 +14,6 @@
     "express": "^4.19.2",
     "openai": "^4.0.0",
     "youtube-transcript": "^1.0.6",
-    "youtube-caption-extractor": "^1.0.0",
-    "youtube-transcript-api": "^1.0.1"
+    "youtube-caption-extractor": "^1.0.0"
   }
 }
