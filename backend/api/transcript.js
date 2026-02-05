@@ -2,6 +2,7 @@
 // YouTube Transcript Service for Vercel
 // Multi-method extraction: YouTube Data API first, then fallbacks
 
+import { fetchTranscript } from 'youtube-transcript-plus';
 import { getSubtitles, getVideoDetails } from 'youtube-caption-extractor';
 import { YoutubeTranscript } from 'youtube-transcript';
 
@@ -158,6 +159,50 @@ async function extractWithYouTubeDataAPI(videoId, apiKey, lang = 'en') {
 
   } catch (error) {
     logAttempt('youtube-data-api', false, error.message);
+    return null;
+  }
+}
+
+// ============================================
+// METHOD 0.5: youtube-transcript-plus (works in 2026)
+// Uses updated Innertube approach
+// ============================================
+async function extractWithTranscriptPlus(videoId, lang = 'en') {
+  try {
+    console.log(`🔄 Method 0.5: Trying youtube-transcript-plus...`);
+
+    const segments = await fetchTranscript(videoId, { lang });
+
+    if (!segments || segments.length === 0) {
+      throw new Error('No transcript segments found');
+    }
+
+    const transcript = segments
+      .map(s => s.text)
+      .join(' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&#39;/g, "'")
+      .replace(/&quot;/g, '"')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>');
+
+    if (transcript.length < 50) {
+      throw new Error(`Insufficient content (${transcript.length} chars)`);
+    }
+
+    logAttempt('youtube-transcript-plus', true, `${transcript.length} chars extracted`);
+
+    return {
+      transcript,
+      language: segments[0]?.lang || lang,
+      confidence: 0.97,
+      source: 'youtube-transcript-plus',
+      segments: segments.length,
+      videoTitle: null
+    };
+
+  } catch (error) {
+    logAttempt('youtube-transcript-plus', false, error.message);
     return null;
   }
 }
@@ -347,14 +392,18 @@ async function extractTranscript(videoId, lang = 'en', apiKey = null) {
 
   extractionLog.length = 0;
 
-  // METHOD 0: YouTube Data API (if API key provided) - most reliable
+  // METHOD 0: YouTube Data API (if API key provided)
   if (apiKey) {
     let result = await extractWithYouTubeDataAPI(videoId, apiKey, lang);
     if (result) return result;
   }
 
+  // METHOD 0.5: youtube-transcript-plus (works in 2026)
+  let result = await extractWithTranscriptPlus(videoId, lang);
+  if (result) return result;
+
   // METHOD 1: youtube-caption-extractor
-  let result = await extractWithCaptionExtractor(videoId, lang);
+  result = await extractWithCaptionExtractor(videoId, lang);
   if (result) return result;
 
   // METHOD 2: youtube-transcript npm
