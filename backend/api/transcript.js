@@ -6,6 +6,27 @@ import { fetchTranscript } from 'youtube-transcript-plus';
 import { getSubtitles, getVideoDetails } from 'youtube-caption-extractor';
 import { YoutubeTranscript } from 'youtube-transcript';
 
+// Browser-like headers and cookies to bypass YouTube consent/blocking
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+const YOUTUBE_COOKIES = 'CONSENT=PENDING+987; SOCS=CAESEwgDEgk2ODE4MTAyNjQaAmVuIAEaBgiA_LyaBg';
+
+// Helper: fetch with YouTube cookies and browser-like headers
+function fetchWithCookies(url, options = {}) {
+  const headers = {
+    'User-Agent': BROWSER_UA,
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+    'Accept-Language': 'en-US,en;q=0.9',
+    'Cookie': YOUTUBE_COOKIES,
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'none',
+    'Sec-Fetch-User': '?1',
+    'Upgrade-Insecure-Requests': '1',
+    ...(options.headers || {})
+  };
+  return fetch(url, { ...options, headers });
+}
+
 // CORS headers
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -64,14 +85,8 @@ async function extractWithYouTubeDataAPI(videoId, apiKey, lang = 'en') {
     }
 
     // Step 2: Fetch the watch page to get caption track URLs
-    // The API key makes this request look more legitimate
-    const watchPageResponse = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8'
-      }
-    });
+    // Uses cookies and browser headers to bypass consent page
+    const watchPageResponse = await fetchWithCookies(`https://www.youtube.com/watch?v=${videoId}`);
 
     if (!watchPageResponse.ok) {
       throw new Error(`Watch page fetch failed: ${watchPageResponse.status}`);
@@ -169,9 +184,32 @@ async function extractWithYouTubeDataAPI(videoId, apiKey, lang = 'en') {
 // ============================================
 async function extractWithTranscriptPlus(videoId, lang = 'en') {
   try {
-    console.log(`🔄 Method 0.5: Trying youtube-transcript-plus...`);
+    console.log(`🔄 Method 0.5: Trying youtube-transcript-plus with cookies...`);
 
-    const segments = await fetchTranscript(videoId, { lang });
+    // Custom fetch hooks to add CONSENT cookies and browser headers
+    // This bypasses YouTube's consent page that blocks datacenter IPs
+    const cookieFetch = async (params) => {
+      const headers = {
+        'User-Agent': params.userAgent || BROWSER_UA,
+        'Cookie': YOUTUBE_COOKIES,
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': params.lang || 'en-US,en;q=0.9',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        ...(params.headers || {})
+      };
+      const options = { method: params.method || 'GET', headers };
+      if (params.body) options.body = params.body;
+      return fetch(params.url, options);
+    };
+
+    const segments = await fetchTranscript(videoId, {
+      lang,
+      videoFetch: cookieFetch,
+      playerFetch: cookieFetch,
+      transcriptFetch: cookieFetch
+    });
 
     if (!segments || segments.length === 0) {
       throw new Error('No transcript segments found');
@@ -294,23 +332,26 @@ async function extractWithYoutubeTranscript(videoId) {
 // ============================================
 async function extractWithInnertubeAPI(videoId, lang = 'en') {
   try {
-    console.log(`🔄 Method 3: Trying YouTube Innertube API...`);
+    console.log(`🔄 Method 3: Trying YouTube Innertube API (ANDROID client)...`);
 
+    // Use ANDROID client context (like youtube-transcript-plus does)
+    // ANDROID client is less likely to be blocked from datacenter IPs
     const response = await fetch('https://www.youtube.com/youtubei/v1/player?key=AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'User-Agent': BROWSER_UA,
         'Origin': 'https://www.youtube.com',
-        'Referer': `https://www.youtube.com/watch?v=${videoId}`
+        'Referer': `https://www.youtube.com/watch?v=${videoId}`,
+        'Cookie': YOUTUBE_COOKIES
       },
       body: JSON.stringify({
         videoId: videoId,
         context: {
           client: {
-            clientName: 'WEB',
-            clientVersion: '2.20231219.04.00',
-            hl: 'en',
+            clientName: 'ANDROID',
+            clientVersion: '20.10.38',
+            hl: lang,
             gl: 'US'
           }
         }
@@ -333,8 +374,15 @@ async function extractWithInnertubeAPI(videoId, lang = 'en') {
                         tracks.find(t => t.languageCode.startsWith('en')) ||
                         tracks[0];
 
-    const captionResponse = await fetch(selectedTrack.baseUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' }
+    // Strip fmt parameter from URL (like youtube-transcript-plus does) to get XML format
+    let captionUrl = selectedTrack.baseUrl.replace(/&fmt=[^&]+/, '');
+
+    const captionResponse = await fetchWithCookies(captionUrl, {
+      headers: {
+        'Sec-Fetch-Dest': 'empty',
+        'Sec-Fetch-Mode': 'no-cors',
+        'Sec-Fetch-Site': 'same-origin'
+      }
     });
 
     if (!captionResponse.ok) {
