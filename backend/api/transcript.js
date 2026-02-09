@@ -78,11 +78,7 @@ async function extractWithYouTubeDataAPI(videoId, apiKey, lang = 'en') {
     const videoTitle = video.snippet?.title || 'Unknown';
 
     console.log(`📺 Video: ${videoTitle}`);
-    console.log(`📝 Has captions: ${hasCaption}`);
-
-    if (!hasCaption) {
-      throw new Error('Video has no captions available');
-    }
+    console.log(`📝 Has captions (Data API): ${hasCaption} (note: ASR/auto-generated captions report false)`);
 
     // Step 2: Fetch the watch page to get caption track URLs
     // Uses cookies and browser headers to bypass consent page

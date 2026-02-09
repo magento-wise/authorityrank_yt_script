@@ -9,11 +9,10 @@ dist
 .vercel
 
 # Env files
-.env
-**/.env
 **/.env.local
 
 # Backend temp/binaries
 backend/bin/yt-dlp
 backend/bin/yt-dlp.exe
 backend/**/tmp
+config.bat
