@@ -4,7 +4,7 @@
   "type": "module",
   "private": true,
   "scripts": {
-    "start": "node index.js"
+    "start": "node init && node index.js"
   },
   "dependencies": {
     "@distube/ytdl-core": "^4.16.12",
